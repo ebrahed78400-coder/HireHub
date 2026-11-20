@@ -7,40 +7,39 @@ class ResumeServiceDatasource {
   ResumeServiceDatasource({required this.supabase});
 
   Future<String?> uploadResume(File file, String fileName) async {
-    // Pick a file
-
     final user = supabase.auth.currentUser;
-    if (user == null) throw Exception("user no logged in");
-    final uniquevalue = DateTime.now().microsecond;
-    final filePath = 'resumes/${user.id}/$uniquevalue$fileName';
 
-    // Upload to Supabase bucket
+    if (user == null) {
+      throw Exception("User not logged in");
+    }
+
+    final uniqueValue = DateTime.now().microsecondsSinceEpoch;
+    final filePath = '${user.id}/$uniqueValue-$fileName';
+
     await supabase.storage
-        .from('resumes') // 👈 your bucket name
-        .upload(filePath, file,
-            fileOptions: const FileOptions(
-              upsert: false,
-            ));
+        .from('resumes')
+        .upload(
+          filePath,
+          file,
+          fileOptions: const FileOptions(upsert: false),
+        );
 
-    // Return the public URL
-    final publicUrl = supabase.storage.from('resumes').getPublicUrl(filePath);
-    updateResumeUrlProfile(publicUrl, user.id);
+    await updateResumeUrlProfile(filePath, user.id);
 
-    return publicUrl;
+    final signedUrl = await supabase.storage
+        .from('resumes')
+        .createSignedUrl(filePath, 3600);
+
+    return signedUrl;
   }
 
-  Future<void> updateResumeUrlProfile(String publicUrl, userId) async {
-    try {
-      await supabase
-          .from("profiles")
-          .update({
-            "resume_url": publicUrl,
-          })
-          .eq("id", userId)
-          .select()
-          .single();
-    } catch (e) {
-      rethrow;
-    }
+  Future<void> updateResumeUrlProfile(
+      String filePath, String userId) async {
+    await supabase
+        .from('profiles')
+        .update({
+          'resume_url': filePath,
+        })
+        .eq('id', userId);
   }
 }
